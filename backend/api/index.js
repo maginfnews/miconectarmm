@@ -1,4 +1,10 @@
 // Vercel Serverless Function entry point
-// Imports the compiled NestJS app from dist/serverless.js (built by nest build)
-const handler = require('../dist/serverless').default;
-module.exports = handler;
+let handler;
+
+module.exports = async (req, res) => {
+  if (!handler) {
+    const mod = require('../dist/serverless');
+    handler = mod.default || mod;
+  }
+  return handler(req, res);
+};
