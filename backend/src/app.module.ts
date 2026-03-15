@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, DynamicModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -14,6 +14,30 @@ import { SoftwareModule } from './modules/software/software.module';
 import { PatchesModule } from './modules/patches/patches.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
 import { AuditModule } from './modules/audit/audit.module';
+
+// Redis/Bull é opcional — funciona sem ele em produção
+const redisImports: DynamicModule[] = [];
+if (process.env.REDIS_URL || process.env.REDIS_HOST) {
+  redisImports.push(
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get('REDIS_URL');
+        if (redisUrl) {
+          return { redis: redisUrl };
+        }
+        return {
+          redis: {
+            host: config.get('REDIS_HOST', 'localhost'),
+            port: config.get<number>('REDIS_PORT', 6379),
+            password: config.get('REDIS_PASSWORD'),
+          },
+        };
+      },
+    }),
+  );
+}
 
 @Module({
   imports: [
@@ -34,7 +58,7 @@ import { AuditModule } from './modules/audit/audit.module';
             type: 'postgres',
             url: databaseUrl,
             entities: [__dirname + '/**/*.entity{.ts,.js}'],
-            synchronize: config.get('NODE_ENV') !== 'production',
+            synchronize: true,
             logging: config.get('NODE_ENV') === 'development',
             ssl: { rejectUnauthorized: false },
           };
@@ -47,30 +71,14 @@ import { AuditModule } from './modules/audit/audit.module';
           password: config.get('DATABASE_PASSWORD', 'MiConecta@2026!'),
           database: config.get('DATABASE_NAME', 'miconecta_rmm'),
           entities: [__dirname + '/**/*.entity{.ts,.js}'],
-          synchronize: config.get('NODE_ENV') !== 'production',
+          synchronize: true,
           logging: config.get('NODE_ENV') === 'development',
         };
       },
     }),
 
-    // Redis para filas (Upstash)
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
-        const redisUrl = config.get('REDIS_URL');
-        if (redisUrl) {
-          return { redis: redisUrl };
-        }
-        return {
-          redis: {
-            host: config.get('REDIS_HOST', 'localhost'),
-            port: config.get<number>('REDIS_PORT', 6379),
-            password: config.get('REDIS_PASSWORD'),
-          },
-        };
-      },
-    }),
+    // Redis (opcional)
+    ...redisImports,
 
     // Agendamento de tarefas
     ScheduleModule.forRoot(),
