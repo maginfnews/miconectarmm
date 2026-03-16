@@ -45,18 +45,19 @@ const entities = [
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
+        // Prioridade: DB_HOST > DATABASE_URL > defaults
+        const dbHost = config.get('DB_HOST');
         const databaseUrl = config.get('DATABASE_URL');
-        if (databaseUrl) {
-          // Parse manual para evitar problemas com caracteres especiais na senha
-          const url = new URL(databaseUrl);
-          console.log(`TypeORM: conectando em ${url.hostname}:${url.port || 5432}`);
+
+        if (dbHost) {
+          console.log(`TypeORM: conectando via DB_HOST em ${dbHost}`);
           return {
             type: 'postgres' as const,
-            host: url.hostname,
-            port: parseInt(url.port || '5432', 10),
-            username: decodeURIComponent(url.username),
-            password: decodeURIComponent(url.password),
-            database: url.pathname.replace('/', ''),
+            host: dbHost,
+            port: parseInt(config.get('DB_PORT', '5432'), 10),
+            username: config.get<string>('DB_USER', 'postgres'),
+            password: config.get<string>('DB_PASSWORD', ''),
+            database: config.get<string>('DB_NAME', 'postgres'),
             entities,
             synchronize: true,
             logging: false,
@@ -66,12 +67,38 @@ const entities = [
             connectTimeoutMS: 30000,
           };
         }
+
+        if (databaseUrl) {
+          try {
+            const url = new URL(databaseUrl);
+            console.log(`TypeORM: conectando via URL em ${url.hostname}`);
+            return {
+              type: 'postgres' as const,
+              host: url.hostname,
+              port: parseInt(url.port || '5432', 10),
+              username: decodeURIComponent(url.username),
+              password: decodeURIComponent(url.password),
+              database: url.pathname.replace('/', ''),
+              entities,
+              synchronize: true,
+              logging: false,
+              ssl: { rejectUnauthorized: false },
+              retryAttempts: 5,
+              retryDelay: 3000,
+              connectTimeoutMS: 30000,
+            };
+          } catch (e) {
+            console.error('ERRO ao parsear DATABASE_URL:', e.message);
+          }
+        }
+
+        console.log('TypeORM: usando config local default');
         return {
           type: 'postgres' as const,
           host: config.get<string>('DATABASE_HOST', 'localhost'),
           port: config.get<number>('DATABASE_PORT', 5432),
           username: config.get<string>('DATABASE_USER', 'miconecta'),
-          password: config.get<string>('DATABASE_PASSWORD', 'MiConecta@2026!'),
+          password: config.get<string>('DATABASE_PASSWORD', ''),
           database: config.get<string>('DATABASE_NAME', 'miconecta_rmm'),
           entities,
           synchronize: true,
