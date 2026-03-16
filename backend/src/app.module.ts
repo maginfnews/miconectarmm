@@ -47,10 +47,16 @@ const entities = [
       useFactory: (config: ConfigService) => {
         const databaseUrl = config.get('DATABASE_URL');
         if (databaseUrl) {
-          console.log('TypeORM: conectando via DATABASE_URL');
+          // Parse manual para evitar problemas com caracteres especiais na senha
+          const url = new URL(databaseUrl);
+          console.log(`TypeORM: conectando em ${url.hostname}:${url.port || 5432}`);
           return {
             type: 'postgres' as const,
-            url: databaseUrl,
+            host: url.hostname,
+            port: parseInt(url.port || '5432', 10),
+            username: decodeURIComponent(url.username),
+            password: decodeURIComponent(url.password),
+            database: url.pathname.replace('/', ''),
             entities,
             synchronize: true,
             logging: false,
